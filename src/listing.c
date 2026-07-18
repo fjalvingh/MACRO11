@@ -102,19 +102,21 @@ static void list_fit(
         binline[0] = 0;
 		if (list_hexout)
 			// extension: list binary output in hex notation: 4 digits with suffix "h"
-			sprintf(binline, "%*s %5.4Xh", offsetof(LSTFORMAT, pc), "", addr);
+			sprintf(binline, "%*s %5.4Xh", offset, "", addr);
 		else
 			// standard: list binary output in octal notation
-			sprintf(binline, "%*s %6.6o", offsetof(LSTFORMAT, pc), "", addr);
+			sprintf(binline, "%*s %6.6o", offset, "", addr);
         padto(binline, offsetof(LSTFORMAT, words));
     } else if (strlen(binline) <= col2) {
+        int flag_size = SIZEOF_MEMBER(LSTFORMAT, flag);
+        int linenum_size = SIZEOF_MEMBER(LSTFORMAT, line_number);
 		if (list_hexout)
 			// extension: list binary output in hex notation:  4 digits with suffix "h"
-			sprintf(binline, "%*s%*d %5.4Xh", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, addr);
+			sprintf(binline, "%*s%*d %5.4Xh", flag_size, "",
+                linenum_size, str->line, addr);
 			else
-			sprintf(binline, "%*s%*d %6.6o", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, addr);
+			sprintf(binline, "%*s%*d %6.6o", flag_size, "",
+                linenum_size, str->line, addr);
         padto(binline, offsetof(LSTFORMAT, words));
     }
 }
@@ -126,16 +128,19 @@ void list_value(
     unsigned word)
 {
     if (dolist()) {
+        int flag_size = SIZEOF_MEMBER(LSTFORMAT, flag);
+        int linenum_size = SIZEOF_MEMBER(LSTFORMAT, line_number);
+
         /* Print the value and go */
         binline[0] = 0;
 		if (list_hexout)
 			// extension: list binary output in hex notation:  4 digits with suffix "h"
-			sprintf(binline, "%*s%*d %5.4Xh", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, word & 0177777);
+			sprintf(binline, "%*s%*d %5.4Xh", flag_size, "",
+                linenum_size, str->line, word & 0177777);
 		else
 			// standard: list binary output in octal notation
-			sprintf(binline, "%*s%*d %6.6o", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, word & 0177777);
+			sprintf(binline, "%*s%*d %6.6o", flag_size, "",
+                linenum_size, str->line, word & 0177777);
     }
 }
 
