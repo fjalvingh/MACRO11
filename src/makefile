@@ -24,40 +24,29 @@ macro11: $(MACRO11_OBJS) makefile
 dumpobj: $(DUMPOBJ_OBJS) makefile
 	$(CC) $(CFLAGS) -o dumpobj $(DUMPOBJ_OBJS)
 
-MACRO11_OBJS: makefile
-DUMPOBJ_OBJS: makefile
+$(MACRO11_OBJS) $(DUMPOBJ_OBJS): makefile
 
 clean:
 	-rm -f $(MACRO11_OBJS) $(DUMPOBJ_OBJS) macro11 dumpobj
 
-macro11.o: macro11.c macro11.h rad50.h object.h  stream2.h \
- mlb.h util.h
-mlb.o: mlb.c  rad50.h stream2.h mlb.h macro11.h util.h
-object.o: object.c rad50.h object.h
-stream2.o: stream2.c macro11.h  stream2.h
-util.o: util.c util.h
-rad50.o: rad50.c rad50.h
-dumpobj.o: dumpobj.c rad50.h util.h
-rad50.o: rad50.c rad50.h
+# Every object depends on all headers; this is simple and always correct.
+HEADERS = assemble.h assemble_aux.h assemble_globals.h extree.h listing.h macro11.h macros.h mlb.h object.h parse.h rad50.h rept_irpc.h stream2.h symbols.h util.h
 
-# Since the only tests we have so far are for crashes,
-# just try to assemble. Later, we will need expected/actual tests.
+$(MACRO11_OBJS) $(DUMPOBJ_OBJS): $(HEADERS)
 
 # Test that all options requiring a value bail out if it's not present.
+# (Uses only POSIX sh, since make runs /bin/sh.)
 argtests: macro11
 	@ for OPT in -e -d -m -p -o -l -ysl ; do \
-	  ./macro11 foo.mac $$OPT     2> /dev/null; \
-    if (( $$? == 1 )); then echo PASS; else echo FAIL; fi; \
-    echo "  $$OPT missing value"; \
-	  ./macro11 foo.mac $$OPT -v  2> /dev/null; \
-    if (( $$? == 1 )); then echo PASS; else echo FAIL; fi; \
-    echo "  $$OPT fol. by option"; \
+	  ./macro11 tests/good.mac $$OPT     2> /dev/null; \
+	  if [ $$? -eq 1 ]; then echo "PASS  $$OPT missing value"; else echo "FAIL  $$OPT missing value"; fi; \
+	  ./macro11 tests/good.mac $$OPT -v  2> /dev/null; \
+	  if [ $$? -eq 1 ]; then echo "PASS  $$OPT followed by option"; else echo "FAIL  $$OPT followed by option"; fi; \
 	done
-	@ ./macro11 foo.mac $$OPT -x -v 2> /dev/null; \
-    if (( $$? == 1 )); then echo PASS; else echo FAIL; fi; \
-    echo "  -x must be the last option"
+	@ ./macro11 tests/good.mac -x -v 2> /dev/null; \
+	if [ $$? -eq 1 ]; then echo "PASS  -x must be the last option"; else echo "FAIL  -x must be the last option"; fi
 
-tests: macro11 argtests
-	@ ACTUAL=`./macro11 tests/test-undef.mac 2>&1`; \
-	if [ "tests/test-undef.mac:1: ***ERROR MACRO .TTYOU not found" == "$$ACTUAL" ]; then echo PASS; else echo FAIL; fi; \
-	echo "  test-undef.mac"
+# Assemble the files in tests/ and compare with the expected output.
+# "sh tests/run-tests.sh -u" updates the expected output.
+tests: macro11 dumpobj argtests
+	@ sh tests/run-tests.sh

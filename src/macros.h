@@ -54,7 +54,7 @@ STREAM         *expandmacro(
 ARG            *new_arg(
     void);
 
-void            read_body(
+int             read_body(
     STACK *stack,
     BUFFER *gb,
     char *name,

@@ -1,0 +1,26 @@
+exit status 0
+--- listing
+       1                                ;; A correct program assembles without errors
+       2                                	.TITLE	GOOD
+       3                                	.MACRO	SAVE R
+       4                                	MOV	R,-(SP)
+       5                                	.ENDM
+       6                                START:	SAVE	R0
+       1 000000 010046                  	MOV	R0,-(SP)
+       7 000002 012701  000012          	MOV	#10.,R1
+       8 000006 077101                  1$:	SOB	R1,1$
+       9 000010 000773                  	BR	START
+      10                                	.END	START
+--- object
+GSD:
+	MODNAME GOOD  =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =12 flags=40
+	XFER       =0 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=12
+	000000: 010046 012701 000012 077101 &.....A~
+	000010: 000773                      ..
+ENDMOD

@@ -1,0 +1,3 @@
+;; Macro without .ENDM
+	.MACRO	M A=<1,2>
+	.WORD	A

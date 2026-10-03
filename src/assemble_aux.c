@@ -17,6 +17,7 @@
 #include "listing.h"
 #include "symbols.h"
 #include "parse.h"
+#include "rad50.h"
 
 
 /* Allocate a new section */
@@ -208,13 +209,9 @@ void implicit_gbl(
 
     switch (value->type) {
     case EX_UNDEFINED_SYM:
-        {
-            SYMBOL         *sym;
-
-            if (!(value->data.symbol->flags & SYMBOLFLAG_LOCAL)) {      /* Unless it's a
-                                                                           local symbol, */
-                sym = add_sym(value->data.symbol->label, 0, SYMBOLFLAG_GLOBAL, &absolute_section, &implicit_st);
-            }
+        if (!(value->data.symbol->flags & SYMBOLFLAG_LOCAL)) {  /* Unless it's a
+                                                                   local symbol, */
+            add_sym(value->data.symbol->label, 0, SYMBOLFLAG_GLOBAL, &absolute_section, &implicit_st);
         }
         break;
     case EX_LIT:
@@ -228,7 +225,7 @@ void implicit_gbl(
     case EX_AND:
     case EX_OR:
         implicit_gbl(value->data.child.right);
-        /* falls into... */
+        /* FALLTHROUGH */
     case EX_COM:
     case EX_NEG:
         implicit_gbl(value->data.child.left);
@@ -314,81 +311,70 @@ int complex_tree(
 {
     switch (tree->type) {
     case EX_LIT:
-        text_complex_lit(tx, tree->data.lit);
-        return 1;
+        return text_complex_lit(tx, tree->data.lit);
 
     case EX_TEMP_SYM:
     case EX_SYM:
         {
             SYMBOL         *sym = tree->data.symbol;
 
-            if ((sym->flags & (SYMBOLFLAG_GLOBAL | SYMBOLFLAG_DEFINITION)) == SYMBOLFLAG_GLOBAL) {
-                text_complex_global(tx, sym->label);
-            } else {
-                text_complex_psect(tx, sym->section->sector, sym->value);
-            }
+            if ((sym->flags & (SYMBOLFLAG_GLOBAL | SYMBOLFLAG_DEFINITION)) == SYMBOLFLAG_GLOBAL)
+                return text_complex_global(tx, sym->label);
+            else
+                return text_complex_psect(tx, sym->section->sector, sym->value);
         }
-        return 1;
 
     case EX_COM:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
-        text_complex_com(tx);
-        return 1;
+        return text_complex_com(tx);
 
     case EX_NEG:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
-        text_complex_neg(tx);
-        return 1;
+        return text_complex_neg(tx);
 
     case EX_ADD:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
         if (!complex_tree(tx, tree->data.child.right))
             return 0;
-        text_complex_add(tx);
-        return 1;
+        return text_complex_add(tx);
 
     case EX_SUB:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
         if (!complex_tree(tx, tree->data.child.right))
             return 0;
-        text_complex_sub(tx);
-        return 1;
+        return text_complex_sub(tx);
 
     case EX_MUL:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
         if (!complex_tree(tx, tree->data.child.right))
             return 0;
-        text_complex_mul(tx);
-        return 1;
+        return text_complex_mul(tx);
 
     case EX_DIV:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
         if (!complex_tree(tx, tree->data.child.right))
             return 0;
-        text_complex_div(tx);
-        return 1;
+        return text_complex_div(tx);
 
     case EX_AND:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
         if (!complex_tree(tx, tree->data.child.right))
             return 0;
-        text_complex_and(tx);
-        return 1;
+        return text_complex_and(tx);
 
     case EX_OR:
         if (!complex_tree(tx, tree->data.child.left))
             return 0;
         if (!complex_tree(tx, tree->data.child.right))
             return 0;
-        text_complex_or(tx);
-        return 1;
+        return text_complex_or(tx);
 
     default:
         return 0;
@@ -412,11 +398,13 @@ static void store_complex(
     text_complex_begin(&tx);           /* Open complex expression */
 
     if (!complex_tree(&tx, value)) {   /* Translate */
-        report(refstr, "Invalid expression\n");
+        report(refstr, tx.overflow ? "Expression too complex\n" : "Invalid expression\n");
+        store_word(refstr, tr, size, 0);
+    } else if (!text_complex_commit(tr, &DOT, size, &tx, 0)) {
+        report(refstr, "Expression too complex\n");
         store_word(refstr, tr, size, 0);
     } else {
-        list_word(refstr, DOT, 0, size, "C");
-        text_complex_commit(tr, &DOT, size, &tx, 0);
+        list_word(refstr, DOT - size, 0, size, "C");
     }
 }
 
@@ -438,11 +426,13 @@ static void store_complex_displaced(
     text_complex_begin(&tx);
 
     if (!complex_tree(&tx, value)) {
-        report(refstr, "Invalid expression\n");
+        report(refstr, tx.overflow ? "Expression too complex\n" : "Invalid expression\n");
+        store_word(refstr, tr, size, 0);
+    } else if (!text_complex_commit_displaced(tr, &DOT, size, &tx, 0)) {
+        report(refstr, "Expression too complex\n");
         store_word(refstr, tr, size, 0);
     } else {
-        list_word(refstr, DOT, 0, size, "C");
-        text_complex_commit_displaced(tr, &DOT, size, &tx, 0);
+        list_word(refstr, DOT - size, 0, size, "C");
     }
 }
 
@@ -559,8 +549,11 @@ void push_cond(
     int ok,
     STREAM *str)
 {
+    if (last_cond + 1 >= MAX_CONDS) {
+        report_always(str, "Conditionals nested too deeply (max %d)\n", MAX_CONDS);
+        exit(EXIT_FAILURE);
+    }
     last_cond++;
-    assert(last_cond < MAX_CONDS);
     conds[last_cond].ok = ok;
     conds[last_cond].file = memcheck(strdup(str->name));
     conds[last_cond].line = str->line;
@@ -613,6 +606,14 @@ void store_value(
     implicit_gbl(value);               /* turn undefined symbols into globals */
 
     if (value->type == EX_LIT) {
+        if (size == 1) {
+            unsigned        word = value->data.lit & 0177777;
+
+            /* A byte may hold 0..377, or a negative number down to
+               -200 (which is 177600 as a word) */
+            if (word > 0377 && word < 0177400)
+                report(stack->top, "Value %o truncated to byte\n", word);
+        }
         store_word(stack->top, tr, size, value->data.lit);
     } else if (!express_sym_offset(value, &sym, &offset)) {
         store_complex(stack->top, tr, size, value);
@@ -642,13 +643,22 @@ int do_word(
 
     do {
         EX_TREE        *value = parse_expr(cp, 0);
+        char           *ncp = value->cp;
 
         store_value(stack, tr, size, value);
-
-        cp = skipdelim(value->cp);
-
         free_tree(value);
-    } while (cp = skipdelim(cp), !EOL(*cp));
+
+        /* Values are separated by a comma or by whitespace */
+        if (ncp == cp || !(EOL(*ncp) || *ncp == ',' || *ncp == ' ' || *ncp == '\t')) {
+            if (ncp == cp)
+                report(stack->top, "Invalid expression\n");
+            else
+                report(stack->top, "Junk at end of line ('%c')\n", *ncp);
+            return 0;
+        }
+
+        cp = skipdelim(ncp);
+    } while (!EOL(*cp));
 
     return 1;
 }
@@ -682,6 +692,79 @@ int check_branch(
 }
 
 
+/* check_object_name checks that a name which goes into the object
+   file survives the RAD50 encoding, and doesn't collide with another
+   one. */
+
+static void check_object_name(
+    char *what,
+    char *name,
+    char **seen,
+    unsigned *codes,
+    int *nseen)
+{
+    unsigned        code[2];
+    int             i;
+
+    if (!rad50_name_ok(name)) {
+        char            temp[8];
+
+        rad50x2(name, code);
+        unrad50(code[0], temp);
+        unrad50(code[1], temp + 3);
+        temp[6] = 0;
+        warning_always(NULL, "%s name %s can't be represented in the object file (becomes \"%s\")\n", what, name,
+                       temp);
+    }
+
+    rad50x2(name, code);
+    for (i = 0; i < *nseen; i++) {
+        if (codes[2 * i] == code[0] && codes[2 * i + 1] == code[1] && strcmp(seen[i], name) != 0) {
+            report_always(NULL, "%s names %s and %s are the same in the object file\n", what, seen[i], name);
+            break;
+        }
+    }
+
+    seen[*nseen] = name;
+    codes[2 * *nseen] = code[0];
+    codes[2 * *nseen + 1] = code[1];
+    (*nseen)++;
+}
+
+/* check_object_names checks the names of all globals and of all
+   program sections. */
+
+static void check_object_names(
+    void)
+{
+    SYMBOL         *sym;
+    SYMBOL_ITER     sym_iter;
+    int             n = 0;
+    int             isect;
+    char          **seen;
+    unsigned       *codes;
+
+    for (sym = first_sym(&symbol_st, &sym_iter); sym != NULL; sym = next_sym(&symbol_st, &sym_iter))
+        n++;
+    if (n < sector)
+        n = sector;
+
+    seen = memcheck(malloc(sizeof(char *) * (n + 1)));
+    codes = memcheck(malloc(sizeof(unsigned) * 2 * (n + 1)));
+
+    n = 0;
+    for (sym = first_sym(&symbol_st, &sym_iter); sym != NULL; sym = next_sym(&symbol_st, &sym_iter))
+        if (sym->flags & SYMBOLFLAG_GLOBAL)
+            check_object_name("Global", sym->label, seen, codes, &n);
+
+    n = 0;
+    for (isect = 0; isect < sector; isect++)
+        check_object_name("Program section", sections[isect]->label, seen, codes, &n);
+
+    free(seen);
+    free(codes);
+}
+
 /* write_globals writes out the GSD prior to the second assembly pass */
 
 void write_globals(
@@ -692,6 +775,8 @@ void write_globals(
     SECTION        *psect;
     SYMBOL_ITER     sym_iter;
     int             isect;
+
+    check_object_names();
 
     if (obj == NULL)
         return;                        /* Nothing to do if no OBJ file. */
@@ -737,7 +822,7 @@ void write_globals(
         unsigned        offset;
 
         if (!express_sym_offset(xfer_address, &sym, &offset)) {
-            report(NULL, "Illegal program transfer address\n");
+            report_always(NULL, "Illegal program transfer address\n");
         } else {
             gsd_xfer(&gsd, sym->section->label, sym->value + offset);
         }

@@ -7,7 +7,7 @@
 
 
 // is char 'c' part of a symbol?
-#define issym(c) (isalpha(c) || isdigit(c) \
+#define issym(c) (isalpha((unsigned char) (c)) || isdigit((unsigned char) (c)) \
 		|| (c) == '.' || (c) == '$' \
 		|| (symbol_allow_underscores && (c) == '_'))
 
@@ -35,6 +35,8 @@ int             get_mode(
 EX_TREE        *parse_expr(
     char *cp,
     int undef);
+EX_TREE        *parse_term(
+    char *cp);
 int             parse_float(
     char *cp,
     char **endp,

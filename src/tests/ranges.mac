@@ -1,0 +1,10 @@
+;; Values must fit their field
+	.BYTE	400
+	.BYTE	-200, 377, -1
+	EMT	400
+	EMT	377
+	TRAP	1000
+	TRAP
+	MARK	100
+	MARK	77
+	.END

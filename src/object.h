@@ -257,8 +257,10 @@ int             text_psect_displaced_offset_word(
     char *name);
 
 typedef struct text_complex {
-    char            accum[126];
+    char            accum[124];     /* RLD record (128) minus record
+                                       header (2) minus RLD command (2) */
     int             len;
+    int             overflow;   /* set if the expression did not fit */
 } TEXT_COMPLEX;
 
 void            text_complex_begin(

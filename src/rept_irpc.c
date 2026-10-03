@@ -92,7 +92,12 @@ STREAM         *expand_rept(
         levelmod = 1;
     }
 
-    read_body(stack, gb, NULL, FALSE);
+    if (!read_body(stack, gb, NULL, FALSE)) {
+        list_level += levelmod;
+        buffer_free(gb);               /* Hit EOF; error already reported */
+        free_tree(value);
+        return NULL;
+    }
 
     list_level += levelmod;
 
@@ -100,7 +105,8 @@ STREAM         *expand_rept(
         char           *name = memcheck(malloc(strlen(stack->top->name) + 32));
 
         sprintf(name, "%s:%d->.REPT", stack->top->name, stack->top->line);
-        buffer_stream_construct(&rstr->bstr, gb, name);
+        /* A repeat count of zero or less means no expansion at all */
+        buffer_stream_construct(&rstr->bstr, (int) value->data.lit > 0 ? gb : NULL, name);
         free(name);
     }
 
@@ -220,7 +226,13 @@ STREAM         *expand_irp(
         levelmod++;
     }
 
-    read_body(stack, gb, NULL, FALSE);
+    if (!read_body(stack, gb, NULL, FALSE)) {
+        list_level += levelmod;
+        buffer_free(gb);               /* Hit EOF; error already reported */
+        free(items);
+        free(label);
+        return NULL;
+    }
 
     list_level += levelmod;
 
@@ -348,7 +360,13 @@ STREAM         *expand_irpc(
         levelmod++;
     }
 
-    read_body(stack, gb, NULL, FALSE);
+    if (!read_body(stack, gb, NULL, FALSE)) {
+        list_level += levelmod;
+        buffer_free(gb);               /* Hit EOF; error already reported */
+        free(items);
+        free(label);
+        return NULL;
+    }
 
     list_level += levelmod;
 

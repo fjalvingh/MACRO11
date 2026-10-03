@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "symbols.h"                   /* my own definitions */
 
@@ -63,7 +64,7 @@ char           *symflags(
     if (sym->flags & SYMBOLFLAG_DEFINITION)
         *fp++ = 'D';
     *fp = 0;
-    return fp;
+    return temp;
 }
 
 
@@ -189,8 +190,15 @@ SYMBOL         *add_sym(
     char            label[SYMMAX_MAX + 1];      // big size
 
     //JH: truncate symbol to SYMMAX
-    strncpy(label, labelraw, symbol_len);
-    label[symbol_len] = 0;
+    /* Local labels (internally "nnn$block", starting with a digit) must
+       not be truncated, or labels in different blocks would collide. */
+    if (isdigit((unsigned char) *labelraw)) {
+        strncpy(label, labelraw, SYMMAX_MAX);
+        label[SYMMAX_MAX] = 0;
+    } else {
+        strncpy(label, labelraw, symbol_len);
+        label[symbol_len] = 0;
+    }
 
     sym = lookup_sym(label, table);
     if (sym != NULL) {

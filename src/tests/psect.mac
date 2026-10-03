@@ -1,0 +1,11 @@
+;; Sections and relocation
+	.PSECT	AAA
+X:	.WORD	^CX
+	.PSECT	BBB
+	.SAVE
+	.PSECT	AAA
+	.RESTORE
+	.WORD	X+5
+	MOV	X,R0
+	.RESTORE
+	.END

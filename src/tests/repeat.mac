@@ -1,0 +1,12 @@
+;; Repeat blocks
+	.REPT	0
+	HALT
+	.ENDR
+	.REPT	2
+	NOP
+	.ENDR
+	.IRP	X,<A,<B,C>>
+	.ASCII	/X/
+	.ENDR
+	.REPT	3
+	NOP

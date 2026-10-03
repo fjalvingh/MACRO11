@@ -125,6 +125,7 @@ void free_tree(
     case EX_TEMP_SYM:
         free(tp->data.symbol->label);
         free(tp->data.symbol);
+        /* FALLTHROUGH */
     case EX_LIT:
     case EX_SYM:
         free(tp);
@@ -269,7 +270,7 @@ EX_TREE        *evaluate(
         } else {
             /* Copy verbatim. */
             res = new_ex_tree();
-            res->type = EX_NEG;
+            res->type = EX_COM;
             res->cp = tp->cp;
             res->data.child.left = tp;
         }
@@ -299,8 +300,9 @@ EX_TREE        *evaluate(
         break;
 
     case EX_ERR:
-        /* Copy */
-        res = ex_err(tp->data.child.left, tp->cp);
+        /* Copy.  The child must be copied too, since the original
+           tree will be freed by the caller. */
+        res = ex_err(tp->data.child.left ? evaluate(tp->data.child.left, undef) : NULL, tp->cp);
         break;
 
     case EX_ADD:
@@ -533,6 +535,14 @@ EX_TREE        *evaluate(
 
             left = evaluate(tp->data.child.left, undef);
             right = evaluate(tp->data.child.right, undef);
+
+            /* Division by zero is an error */
+            if (right->type == EX_LIT && (right->data.lit & 0177777) == 0) {
+                free_tree(left);
+                free_tree(right);
+                res = ex_err(NULL, cp);
+                break;
+            }
 
             /* Can only divide if both are literals */
             if (left->type == EX_LIT && right->type == EX_LIT) {

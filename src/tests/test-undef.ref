@@ -1,0 +1,15 @@
+test-undef.mac:1: ***ERROR MACRO .TTYOU not found
+1 Errors
+exit status 1
+--- listing
+test-undef.mac:1: ***ERROR MACRO .TTYOU not found
+       1                                	.MCALL	.TTYOU
+       2                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =0 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+ENDMOD

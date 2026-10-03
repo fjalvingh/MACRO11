@@ -1,0 +1,7 @@
+;; Strings
+	.ASCIZ	<15><12>/x/
+	.ASCII	^O15/y/
+	.RAD50	/A-B/
+	.RAD50	/ABC/
+	.ASCII	/abc
+	.END

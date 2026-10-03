@@ -1,0 +1,34 @@
+ranges.mac:2: ***ERROR Value 400 truncated to byte
+ranges.mac:4: ***ERROR Operand 400 out of range (max 377)
+ranges.mac:6: ***ERROR Operand 1000 out of range (max 377)
+ranges.mac:8: ***ERROR Operand 100 out of range (max 77)
+4 Errors
+exit status 1
+--- listing
+       1                                ;; Values must fit their field
+ranges.mac:2: ***ERROR Value 400 truncated to byte
+       2 000000    000                  	.BYTE	400
+       3 000001    200     377     377  	.BYTE	-200, 377, -1
+ranges.mac:4: ***ERROR Operand 400 out of range (max 377)
+       4 000004 104000                  	EMT	400
+       5 000006 104377                  	EMT	377
+ranges.mac:6: ***ERROR Operand 1000 out of range (max 377)
+       6 000010 104400                  	TRAP	1000
+       7 000012 104400                  	TRAP
+ranges.mac:8: ***ERROR Operand 100 out of range (max 77)
+       8 000014 006400                  	MARK	100
+       9 000016 006477                  	MARK	77
+      10                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =20 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=20
+	000000: 100000 177777 104000 104377 ........
+	000010: 104400 104400 006400 006477 ......?.
+ENDMOD

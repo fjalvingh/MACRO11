@@ -37,6 +37,8 @@ extern int		list_hexout ;      /* show assembled output in hex notation (standar
 
 extern FILE    *lstfile;
 
+extern int      error_count;    /* number of errors reported */
+
 #endif
 
 
@@ -59,6 +61,22 @@ void            list_flush(
     void);
 
 void            report(
+    STREAM *str,
+    char *fmt,
+    ...);
+
+void            report_at(
+    char *name,
+    int line,
+    char *fmt,
+    ...);
+
+void            report_always(
+    STREAM *str,
+    char *fmt,
+    ...);
+
+void            warning_always(
     STREAM *str,
     char *fmt,
     ...);

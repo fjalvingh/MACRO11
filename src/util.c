@@ -144,7 +144,8 @@ void my_searchenv(
            name[0] == '\\' ||          /* Start with absolute ref? */
 #endif
            name[0] == '/') {           /* Start with absolute ref? */
-        strncpy(hitfile, name, hitlen); /* Copy to target */
+        strncpy(hitfile, name, hitlen - 1);     /* Copy to target */
+        hitfile[hitlen - 1] = 0;
         return;
     }
 
@@ -156,7 +157,12 @@ void my_searchenv(
                                           argument.  I don't want the return
                                           value from getenv destroyed. */
 
-    while ((cp = strtok(envcopy, PATHSEP)) != NULL) {
+    if (envcopy == NULL)
+        return;
+
+    /* strtok must get the string only on the first call, or it
+       would return the first path element again and again. */
+    for (cp = strtok(envcopy, PATHSEP); cp != NULL; cp = strtok(NULL, PATHSEP)) {
         struct stat     info;
         char           *concat = malloc(strlen(cp) + strlen(name) + 2);
 
@@ -173,10 +179,14 @@ void my_searchenv(
                zero-delimited. */
             strncpy(hitfile, concat, hitlen - 1);
             hitfile[hitlen - 1] = 0;
+            free(concat);
             free(envcopy);
             return;
         }
+        free(concat);
     }
+
+    free(envcopy);
 
     /* If I fall out of that loop, then hitfile indicates no match,
        and return. */

@@ -47,11 +47,15 @@ DAMAGE.
 
 #define WORD(cp) ((*(cp) & 0xff) + ((*((cp)+1) & 0xff) << 8))
 
+#define MAX_PSECTS 256
+
 int             psectid = 0;
-char           *psects[256];
+char           *psects[MAX_PSECTS];
 FILE           *bin = NULL;
 int             badbin = 0;
 int             xferad = 1;
+int             readerr = 0;    /* Set if a record is malformed */
+int             recerr = 0;     /* Set if the last record couldn't be read */
 
 char           *readrec(
     FILE *fp,
@@ -68,6 +72,8 @@ char           *readrec(
 
     if (c == EOF)
         return NULL;
+
+    recerr = 1;                        /* Until proven otherwise */
 
     if (c != 1) {
         fprintf(stderr, "Improperly formatted OBJ file (1)\n");
@@ -104,7 +110,7 @@ char           *readrec(
     chksum -= c;
 
     *len -= 4;                         // Subtract header and length bytes from length
-    if (*len < 0) {
+    if (*len < 2) {                    // Need at least the record type
         fprintf(stderr, "Improperly formatted OBJ file (5)\n");
         return NULL;
     }
@@ -126,6 +132,11 @@ char           *readrec(
         chksum -= (buf[i] & 0xff);
 
     c = fgetc(fp);
+    if (c == EOF) {
+        free(buf);
+        fprintf(stderr, "Improperly formatted OBJ file (7): truncated record\n");
+        return NULL;
+    }
     c &= 0xff;
     chksum &= 0xff;
 
@@ -135,6 +146,7 @@ char           *readrec(
         return NULL;
     }
 
+    recerr = 0;
     return buf;
 }
 
@@ -296,7 +308,7 @@ void got_gsd(
     int             i;
     char           *gsdline;
 
-    for (i = 2; i < len; i += 8) {
+    for (i = 2; i + 8 <= len; i += 8) {
         char            name[8];
         unsigned        value;
         unsigned        flags;
@@ -333,8 +345,13 @@ void got_gsd(
             break;
         case 5:
             sprintf(gsdline, "\tPSECT %s=%o flags=%o\n", name, value, flags);
-            psects[psectid] = strdup(name);
-            trim(psects[psectid++]);
+            if (psectid < MAX_PSECTS) {
+                psects[psectid] = strdup(name);
+                trim(psects[psectid++]);
+            } else {
+                fprintf(stderr, "Too many PSECTs (max %d)\n", MAX_PSECTS);
+                readerr = 1;
+            }
             break;
         case 6:
             sprintf(gsdline, "\tIDENT %s=%o flags=%o\n", name, value, flags);
@@ -350,16 +367,11 @@ void got_gsd(
         gsdline = realloc(gsdline, strlen(gsdline) + 1);
         add_gsdline(gsdline);
     }
-}
 
-int compare_gsdlines(
-    const void *p1,
-    const void *p2)
-{
-    const char     *const *l1 = p1,
-    *const         *l2 = p2;
-
-    return strcmp(*l1, *l2);
+    if (i != len) {
+        printf("\t***Truncated GSD entry (%d bytes)\n", len - i);
+        readerr = 1;
+    }
 }
 
 void got_endgsd(
@@ -368,8 +380,8 @@ void got_endgsd(
 {
     int             i;
 
-    qsort(all_gsds, nr_gsds, sizeof(char *), compare_gsdlines);
-
+    /* The GSD entries are listed in file order, which is also the
+       order that CPLX_REL sector numbers refer to. */
     printf("GSD:\n");
 
     for (i = 0; i < nr_gsds; i++) {
@@ -380,6 +392,9 @@ void got_endgsd(
     printf("ENDGSD\n");
 
     free(all_gsds);
+    all_gsds = NULL;
+    nr_gsds = 0;
+    gsdsize = 0;
 }
 
 unsigned        last_text_addr = 0;
@@ -388,8 +403,15 @@ void got_text(
     char *cp,
     int len)
 {
-    unsigned        addr = WORD(cp + 2);
+    unsigned        addr;
 
+    if (len < 4) {
+        readerr = 1;
+        printf("***Truncated TEXT record\n");
+        return;
+    }
+
+    addr = WORD(cp + 2);
     last_text_addr = addr;
 
     printf("TEXT ADDR=%o LEN=%o\n", last_text_addr, len - 4);
@@ -421,9 +443,39 @@ void got_rld(
     for (i = 2; i < len;) {
         unsigned        addr;
         unsigned        word;
-        unsigned        disp = cp[i + 1] & 0xff;
+        unsigned        disp;
         char            name[8];
         char           *byte;
+        int             need;
+
+        /* Check that the whole entry is in the record */
+        switch (cp[i] & 0x7f) {
+        case 011:
+        case 017:
+            need = 2;
+            break;
+        case 01:
+        case 03:
+        case 010:
+            need = 4;
+            break;
+        case 02:
+        case 04:
+        case 012:
+        case 014:
+            need = 6;
+            break;
+        default:
+            need = 8;
+            break;
+        }
+        if (i + need > len) {
+            readerr = 1;
+            printf("\t***Truncated RLD entry\n");
+            return;
+        }
+
+        disp = cp[i + 1] & 0xff;
 
         addr = last_text_addr + disp - 4;
 
@@ -495,7 +547,7 @@ void got_rld(
         case 014:
             rad50name(cp + i + 2, name);
 
-            printf("\tPSECT displaced%s %o=%s+%o\n", byte, addr, name, word);
+            printf("\tPSECT displaced%s %o=%s\n", byte, addr, name);
             i += 6;
             badbin = 1;
             break;
@@ -522,6 +574,11 @@ void got_rld(
                 int             size;
 
                 for (;;) {
+                    if (i >= len) {
+                        readerr = 1;
+                        printf("***Truncated complex relocation\n");
+                        return;
+                    }
                     size = 1;
                     switch (*xp) {
                     case 000:
@@ -545,6 +602,9 @@ void got_rld(
                     case 006:
                         fputs("! ", stdout);
                         break;
+                    case 007:
+                        fputs("^ ", stdout);
+                        break;
                     case 010:
                         fputs("neg ", stdout);
                         break;
@@ -559,18 +619,35 @@ void got_rld(
                         break;
 
                     case 016:
+                        if (i + 5 > len) {
+                            readerr = 1;
+                            printf("***Truncated complex relocation\n");
+                            return;
+                        }
                         rad50name(xp + 1, name);
                         printf("%s ", name);
                         size = 5;
                         break;
 
                     case 017:
-                        assert((xp[1] & 0377) < psectid);
-                        printf("%s:%o ", psects[xp[1] & 0377], WORD(xp + 2));
+                        if (i + 4 > len) {
+                            readerr = 1;
+                            printf("***Truncated complex relocation\n");
+                            return;
+                        }
+                        if ((xp[1] & 0377) < psectid)
+                            printf("%s:%o ", psects[xp[1] & 0377], WORD(xp + 2));
+                        else
+                            printf("<sector %o>:%o ", xp[1] & 0377, WORD(xp + 2));
                         size = 4;
                         break;
 
                     case 020:
+                        if (i + 3 > len) {
+                            readerr = 1;
+                            printf("***Truncated complex relocation\n");
+                            return;
+                        }
                         printf("%o ", WORD(xp + 1));
                         size = 3;
                         break;
@@ -605,7 +682,14 @@ void got_endmod(
     char *cp,
     int len)
 {
+    int             i;
+
     printf("ENDMOD\n");
+
+    /* Sector numbers are per module */
+    for (i = 0; i < psectid; i++)
+        free(psects[i]);
+    psectid = 0;
 }
 
 void got_libhdr(
@@ -630,13 +714,22 @@ int main(
     FILE           *fp;
     char           *cp;
 
-    fp = fopen(argv[1], "rb");
-    if (fp == NULL)
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: dumpobj <objfile> [<binfile>]\n");
         return EXIT_FAILURE;
-    if (argv[2]) {
+    }
+
+    fp = fopen(argv[1], "rb");
+    if (fp == NULL) {
+        fprintf(stderr, "Unable to open %s\n", argv[1]);
+        return EXIT_FAILURE;
+    }
+    if (argc > 2) {
         bin = fopen(argv[2], "wb");
-        if (bin == NULL)
+        if (bin == NULL) {
+            fprintf(stderr, "Unable to create %s\n", argv[2]);
             return EXIT_FAILURE;
+        }
     }
 
     while ((cp = readrec(fp, &len)) != NULL) {
@@ -681,5 +774,5 @@ int main(
     }
 
     fclose(fp);
-    return EXIT_SUCCESS;
+    return (readerr || recerr) ? EXIT_FAILURE : EXIT_SUCCESS;
 }

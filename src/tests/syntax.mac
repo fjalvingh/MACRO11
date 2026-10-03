@@ -1,0 +1,16 @@
+;; Instruction syntax errors
+	MOV	R0,R1 junk
+	MOV	(R0)+ ,R1
+	JMP	R0
+	RTS	10
+X:	BR	X+1000
+	SOB	R0,FOO
+	LDF	R0,AC4
+A:	NOP
+A:	NOP
+C=5
+C=6
+A=5
+	.ENDM
+	.ENDR
+	.END

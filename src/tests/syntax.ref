@@ -1,0 +1,53 @@
+syntax.mac:2: ***ERROR Junk at end of line ('j')
+syntax.mac:4: ***ERROR JMP Rn is illegal
+syntax.mac:5: ***ERROR Illegal addressing mode
+syntax.mac:6: ***ERROR Branch target out of range (distance=776)
+syntax.mac:7: ***ERROR Bad branch target
+syntax.mac:8: ***ERROR Invalid destination register
+syntax.mac:10: ***ERROR Illegal symbol definition A
+syntax.mac:13: ***ERROR Illegal symbol definition A
+syntax.mac:14: ***ERROR .ENDM without .MACRO
+syntax.mac:15: ***ERROR .ENDR without .REPT, .IRP or .IRPC
+10 Errors
+exit status 1
+--- listing
+       1                                ;; Instruction syntax errors
+syntax.mac:2: ***ERROR Junk at end of line ('j')
+       2 000000 010001                  	MOV	R0,R1 junk
+       3 000002 012001                  	MOV	(R0)+ ,R1
+syntax.mac:4: ***ERROR JMP Rn is illegal
+       4 000004 000100                  	JMP	R0
+syntax.mac:5: ***ERROR Illegal addressing mode
+       5 000006 000200                  	RTS	10
+syntax.mac:6: ***ERROR Branch target out of range (distance=776)
+       6 000010 000400                  X:	BR	X+1000
+syntax.mac:7: ***ERROR Bad branch target
+       7 000012 077000                  	SOB	R0,FOO
+syntax.mac:8: ***ERROR Invalid destination register
+       8                                	LDF	R0,AC4
+       9 000014 000240                  A:	NOP
+syntax.mac:10: ***ERROR Illegal symbol definition A
+      10 000016 000240                  A:	NOP
+      11 000005                         C=5
+      12 000006                         C=6
+syntax.mac:13: ***ERROR Illegal symbol definition A
+      13                                A=5
+syntax.mac:14: ***ERROR .ENDM without .MACRO
+      14                                	.ENDM
+syntax.mac:15: ***ERROR .ENDR without .REPT, .IRP or .IRPC
+      15                                	.ENDR
+      16                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	GLOBAL FOO   =0 REF flags=100
+	PSECT       =20 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=20
+	000000: 010001 012001 000100 000200 ....@...
+	000010: 000400 077000 000240 000240 ...~....
+ENDMOD

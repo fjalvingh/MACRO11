@@ -117,6 +117,7 @@ MLB            *mlb_open(
 
     if (WORD(buff) != 01001) {         /* Is this really a macro library? */
         mlb_close(mlb);                /* Nope. */
+        free(buff);
         return NULL;
     }
 
@@ -127,6 +128,11 @@ MLB            *mlb_open(
                                           directory */
 
     free(buff);                        /* Done with that header. */
+
+    if (entsize == 0 || nr_entries == 0) {
+        mlb_close(mlb);                /* Empty or corrupt directory */
+        return NULL;
+    }
 
     /* Allocate a buffer for the disk directory */
     buff = memcheck(malloc(nr_entries * entsize));
@@ -249,6 +255,7 @@ BUFFER         *mlb_entry(
     char           *bp;
     int             c;
 
+    ent = NULL;
     for (i = 0; i < mlb->nentries; i++) {
         ent = &mlb->directory[i];
         if (strcmp(mlb->directory[i].label, name) == 0)
@@ -267,15 +274,21 @@ BUFFER         *mlb_entry(
 
     for (i = 0; i < ent->length; i++) {
         c = fgetc(mlb->fp);            /* Get macro byte */
+        if (c == EOF)
+            break;                     /* Truncated library */
         if (c == '\r' || c == 0)       /* If it's a carriage return or 0,
                                           discard it. */
             continue;
         *bp++ = c;
     }
-    *bp++ = 0;                         /* Store trailing 0 delim */
+    if (bp > buf->buffer && bp[-1] != '\n')
+        *bp++ = '\n';                  /* Terminate the last line */
 
-    /* Now resize that buffer to the length actually read. */
-    buffer_resize(buf, (int) (bp - buf->buffer));
+    /* Now resize that buffer to the length actually read.  The
+       trailing 0 delimiter is not part of the text. */
+    buffer_resize(buf, (int) (bp - buf->buffer) + 1);
+    buf->buffer[buf->length - 1] = 0;
+    buf->length--;
 
     return buf;
 }
@@ -301,10 +314,16 @@ void mlb_extract(
         char            name[32];
 
         buf = mlb_entry(mlb, mlb->directory[i].label);
-        sprintf(name, "%s.MAC", mlb->directory[i].label);
+        if (buf == NULL)
+            continue;
+        snprintf(name, sizeof(name), "%s.MAC", mlb->directory[i].label);
         fp = fopen(name, "w");
-        fwrite(buf->buffer, 1, buf->length, fp);
-        fclose(fp);
+        if (fp == NULL) {
+            fprintf(stderr, "Unable to create %s\n", name);
+        } else {
+            fwrite(buf->buffer, 1, buf->length, fp);
+            fclose(fp);
+        }
         buffer_free(buf);
     }
 }

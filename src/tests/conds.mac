@@ -1,0 +1,8 @@
+;; Conditionals
+	.IIF	NE 1, .WORD 1,2
+	.IF	XX 1
+	.WORD	5
+	.ENDC
+	.IF	EQ 0
+	NOP
+	.END

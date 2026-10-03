@@ -1,0 +1,16 @@
+macro-eof.mac:2: ***ERROR Macro body not closed (missing .ENDM)
+1 Errors
+exit status 1
+--- listing
+       1                                ;; Macro without .ENDM
+       2                                	.MACRO	M A=<1,2>
+macro-eof.mac:2: ***ERROR Macro body not closed (missing .ENDM)
+       3                                	.WORD	A
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =0 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+ENDMOD

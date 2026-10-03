@@ -1,0 +1,28 @@
+strings.mac:4: ***ERROR Illegal character '-' in .RAD50 string
+strings.mac:6: ***ERROR Unterminated string in .ASCII
+2 Errors
+exit status 1
+--- listing
+       1                                ;; Strings
+       2 000000    015     012     170  	.ASCIZ	<15><12>/x/
+         000003    000                  
+       3 000004    015     171          	.ASCII	^O15/y/
+strings.mac:4: ***ERROR Illegal character '-' in .RAD50 string
+       4 000006 003102                  	.RAD50	/A-B/
+       5 000010 003223                  	.RAD50	/ABC/
+strings.mac:6: ***ERROR Unterminated string in .ASCII
+       6 000012    141     142     143  	.ASCII	/abc
+       7                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =15 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=15
+	000000: 005015 000170 074415 003102 ..x..yB.
+	000010: 003223 061141 143           ..abc
+ENDMOD

@@ -546,21 +546,22 @@ int brackrange(
     int *length,
     char **endp)
 {
-    char            endstr[6];
-    int             endlen;
+    char            close;      /* Closing delimiter */
+    int             nesting;    /* Whether <> nest */
     int             nest;
     int             len;
 
     switch (*cp) {
     case '^':
-        endstr[0] = cp[1];
-        strcpy(endstr + 1, "\n");
+        if (EOL(cp[1]) || cp[1] == ' ' || cp[1] == '\t')
+            return FALSE;              /* No delimiter */
+        close = cp[1];
+        nesting = FALSE;
         *start = 2;
-        endlen = 1;
         break;
     case '<':
-        strcpy(endstr, "<>\n");
-        endlen = 1;
+        close = '>';
+        nesting = TRUE;
         *start = 1;
         break;
     default:
@@ -569,24 +570,22 @@ int brackrange(
 
     cp += *start;
 
-    len = 0;
     nest = 1;
-    while (nest) {
-        int             sublen;
-
-        sublen = strcspn(cp + len, endstr);
-        if (cp[len + sublen] == '<')
+    for (len = 0; cp[len] != 0 && cp[len] != '\n'; len++) {
+        if (nesting && cp[len] == '<')
             nest++;
-        else
-            nest--;
-        len += sublen;
+        else if (cp[len] == close && --nest == 0)
+            break;
     }
 
     *length = len;
-    if (endp)
-        *endp = cp + len + endlen;
+    if (endp) {
+        /* Skip the closing delimiter, if it is there.  If the line
+           ended first, the string extends to the end of the line. */
+        *endp = cp + len + (cp[len] == close ? 1 : 0);
+    }
 
-    return 1;
+    return TRUE;
 }
 
 /* parse_unary parses out a unary operator or leaf expression.  */
@@ -602,10 +601,16 @@ EX_TREE        *parse_unary(
     if (*cp == '%') {                  /* Register notation */
         unsigned        reg;
 
+        char           *endcp;
+
         cp++;
-        reg = strtoul(cp, &cp, 8);
-        if (reg > 7)
-            return ex_err(NULL, cp);
+        reg = strtoul(cp, &endcp, 8);
+        if (endcp == cp || reg > 7 || isalnum((unsigned char) *endcp)) {
+            while (isalnum((unsigned char) *endcp))
+                endcp++;               /* Skip the bad register number */
+            return ex_err(NULL, endcp);
+        }
+        cp = endcp;
 
         /* This returns references to the built-in register symbols */
         tp = new_ex_tree();
@@ -731,6 +736,8 @@ EX_TREE        *parse_unary(
     if (*cp == '\'') {
         /* 'x single ASCII character */
         cp++;
+        if (*cp == 0 || *cp == '\n')
+            return ex_err(NULL, cp);   /* Missing character */
         tp = new_ex_tree();
         tp->type = EX_LIT;
         tp->data.lit = *cp & 0xff;
@@ -741,6 +748,8 @@ EX_TREE        *parse_unary(
     if (*cp == '\"') {
         /* "xx ASCII character pair */
         cp++;
+        if (*cp == 0 || *cp == '\n' || cp[1] == 0 || cp[1] == '\n')
+            return ex_err(NULL, cp);   /* Missing characters */
         tp = new_ex_tree();
         tp->type = EX_LIT;
         tp->data.lit = (cp[0] & 0xff) | ((cp[1] & 0xff) << 8);
@@ -763,13 +772,29 @@ EX_TREE        *parse_unary(
                local label.  */
 
             /* Look for a trailing period, to indicate decimal... */
-            for (endcp = cp; isdigit(*endcp); endcp++) ;
+            for (endcp = cp; isdigit((unsigned char) *endcp); endcp++) ;
             if (*endcp == '.')
                 rad = 10;
 
             value = strtoul(cp, &endcp, rad);
+
+            /* A digit that is not valid in the radix (like 9 in
+               octal) is an error.  Skip the whole digit string so
+               the caller doesn't parse its remainder as another
+               number. */
+            if (endcp == cp || isalnum((unsigned char) *endcp)) {
+                while (isalnum((unsigned char) *endcp))
+                    endcp++;
+                if (*endcp == '.')
+                    endcp++;
+                return ex_err(NULL, endcp);
+            }
+
             if (*endcp == '.')
                 endcp++;
+
+            if (value > 0177777)
+                return ex_err(NULL, endcp);     /* Doesn't fit in 16 bits */
 
             tp = new_ex_tree();
             tp->type = EX_LIT;
@@ -851,6 +876,27 @@ EX_TREE        *parse_expr(
                                           the rootmost node  */
     free_tree(expr);                   /* Discard parse in favor of
                                           evaluation */
+
+    return value;
+}
+
+/*
+  parse_term - parses and evaluates a single term (a number, symbol,
+  unary operation or bracketed expression) without any following
+  binary operators.  Used where a following character must not be
+  taken as an operator, like in .ASCII <15>/text/.
+*/
+
+EX_TREE        *parse_term(
+    char *cp)
+{
+    EX_TREE        *expr;
+    EX_TREE        *value;
+
+    expr = parse_unary(cp);
+    value = evaluate(expr, 0);
+    value->cp = expr->cp;
+    free_tree(expr);
 
     return value;
 }

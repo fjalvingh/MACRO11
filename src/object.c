@@ -99,7 +99,8 @@ static int writerec(
 
     chksum &= 0xff;
 
-    fputc(chksum, fp);                 /* Followed by the checksum byte */
+    if (fputc(chksum, fp) == EOF)      /* Followed by the checksum byte */
+        return 0;
 
     return 1;                          /* Worked okay. */
 }
@@ -147,7 +148,7 @@ static int gsd_write(
     char           *cp;
     unsigned        radtbl[2];
 
-    if (gsd->offset > sizeof(gsd->buf) - 8) {
+    if (gsd->offset > (int) sizeof(gsd->buf) - 8) {
         if (!gsd_flush(gsd))
             return 0;
     }
@@ -312,13 +313,17 @@ static int text_fit(
     int txtsize,
     int rldsize)
 {
-    if (tr->txt_offset + txtsize <= sizeof(tr->text) && tr->rld_offset + rldsize <= sizeof(tr->rld)
+    if (tr->txt_offset + txtsize <= (int) sizeof(tr->text) && tr->rld_offset + rldsize <= (int) sizeof(tr->rld)
         && (txtsize == 0 || tr->txt_addr + tr->txt_offset - 4 == addr))
         return 1;                      /* All's well. */
 
     if (!text_flush(tr))
         return 0;
     text_init(tr, tr->fp, addr);
+
+    /* Even an empty buffer may be too small */
+    if (tr->txt_offset + txtsize > (int) sizeof(tr->text) || tr->rld_offset + rldsize > (int) sizeof(tr->rld))
+        return 0;
 
     return 1;
 }
@@ -761,6 +766,7 @@ void text_complex_begin(
     TEXT_COMPLEX *tx)
 {
     tx->len = 0;
+    tx->overflow = 0;
 }
 
 /* text_complex_fit checks if a complex expression will fit and
@@ -772,8 +778,10 @@ static char    *text_complex_fit(
 {
     int             len;
 
-    if (tx->len + size > sizeof(tx->accum))
+    if (tx->len + size > (int) sizeof(tx->accum)) {
+        tx->overflow = 1;
         return NULL;                   /* Expression has grown too complex. */
+    }
 
     len = tx->len;
 
@@ -931,7 +939,8 @@ int text_complex_commit(
 {
     int             i;
 
-    text_complex_byte(tx, CPLX_STORE);
+    if (!text_complex_byte(tx, CPLX_STORE))
+        return 0;                      /* Expression too complex */
 
     if (!text_fit(tr, *addr, size, tx->len + 2))
         return 0;
@@ -960,7 +969,8 @@ int text_complex_commit_displaced(
 {
     int             i;
 
-    text_complex_byte(tx, CPLX_STORE_DISP);
+    if (!text_complex_byte(tx, CPLX_STORE_DISP))
+        return 0;                      /* Expression too complex */
 
     if (!text_fit(tr, *addr, size, tx->len + 2))
         return 0;

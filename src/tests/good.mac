@@ -1,0 +1,10 @@
+;; A correct program assembles without errors
+	.TITLE	GOOD
+	.MACRO	SAVE R
+	MOV	R,-(SP)
+	.ENDM
+START:	SAVE	R0
+	MOV	#10.,R1
+1$:	SOB	R1,1$
+	BR	START
+	.END	START

@@ -195,9 +195,9 @@ char           *buffer_stream_gets(
     nl = memchr(cp, '\n', buf->length - bstr->offset);
 
     if (nl)
-        nl++;
-
-    bstr->offset = (int) (nl - buf->buffer);
+        bstr->offset = (int) (nl + 1 - buf->buffer);
+    else
+        bstr->offset = buf->length;    /* Last line has no newline */
     str->line++;
 
     return cp;
@@ -239,6 +239,7 @@ void buffer_stream_construct(
     bstr->stream.vtbl = &buffer_stream_vtbl;
 
     bstr->stream.name = memcheck(strdup(name));
+    bstr->stream.next = NULL;
 
     bstr->buffer = buffer_clone(buf);
     bstr->offset = 0;
@@ -288,6 +289,16 @@ static char    *file_gets(
     /* Read single characters, end of line when '\n' or '\f' hit */
 
     i = 0;
+    c = fgetc(fstr->fp);
+    if (c == EOF)
+        return NULL;                   /* No more lines */
+    ungetc(c, fstr->fp);
+
+    /* The line number counts physical lines; a form feed doesn't
+       start a new one. */
+    if (fstr->newline)
+        fstr->stream.line++;
+
     while (c = fgetc(fstr->fp), c != '\n' && c != '\f' && c != EOF) {
         if (c == 0)
             continue;                  /* Don't buffer zeros */
@@ -301,8 +312,7 @@ static char    *file_gets(
                                           into newlines */
     fstr->buffer[i] = 0;
 
-    if (c == '\n')
-        fstr->stream.line++;           /* Count a line */
+    fstr->newline = (c != '\f');
 
     return fstr->buffer;
 }
@@ -328,6 +338,7 @@ void file_rewind(
 
     rewind(fstr->fp);
     str->line = 0;
+    fstr->newline = 1;
 }
 
 static STREAM_VTBL file_stream_vtbl = {
@@ -350,6 +361,8 @@ STREAM         *new_file_stream(
 
     str->stream.vtbl = &file_stream_vtbl;
     str->stream.name = memcheck(strdup(filename));
+    str->stream.next = NULL;
+    str->newline = 1;
     str->buffer = memcheck(malloc(STREAM_BUFFER_SIZE));
     str->fp = fp;
     str->stream.line = 0;

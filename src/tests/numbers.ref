@@ -1,0 +1,64 @@
+numbers.mac:2: ***ERROR Invalid expression
+numbers.mac:3: ***ERROR Invalid expression
+numbers.mac:4: ***ERROR Junk at end of line ('5')
+numbers.mac:5: ***ERROR Invalid expression
+numbers.mac:6: ***ERROR Invalid expression
+numbers.mac:9: ***ERROR Invalid expression
+numbers.mac:10: ***ERROR Invalid expression
+7 Errors
+exit status 1
+--- listing
+       1                                ;; Numbers that are not valid must be reported, not hang or split
+numbers.mac:2: ***ERROR Invalid expression
+       2 000000 000000                  	.WORD	9
+numbers.mac:3: ***ERROR Invalid expression
+       3 000002 000000                  	.WORD	^B102
+numbers.mac:4: ***ERROR Junk at end of line ('5')
+       4 000004 000010                  	.WORD	8.5
+numbers.mac:5: ***ERROR Invalid expression
+       5 000006 000000                  	.WORD	1/0
+numbers.mac:6: ***ERROR Invalid expression
+       6 000010 000000                  	.WORD	200000
+       7 000012 177777  177777          	.WORD	177777, 65535.
+       8 000016 000001  000002  000003  	.WORD	1 2,3
+numbers.mac:9: ***ERROR Invalid expression
+       9 000024 000000                  	.WORD	%9
+numbers.mac:10: ***ERROR Invalid expression
+      10 000026 000000                  	.WORD	<1
+      11 000030 000101  041101          	.WORD	'A, "AB
+      12                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =34 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+RLD
+	Location counter modification 0
+TEXT ADDR=0 LEN=2
+	000000: 000000                      ..
+RLD
+	Location counter modification 2
+TEXT ADDR=2 LEN=4
+	000002: 000000 000010               ....
+RLD
+	Location counter modification 6
+TEXT ADDR=6 LEN=2
+	000006: 000000                      ..
+RLD
+	Location counter modification 10
+TEXT ADDR=10 LEN=14
+	000010: 000000 177777 177777 000001 ........
+	000020: 000002 000003               ....
+RLD
+	Location counter modification 24
+TEXT ADDR=24 LEN=2
+	000024: 000000                      ..
+RLD
+	Location counter modification 26
+TEXT ADDR=26 LEN=6
+	000026: 000000 000101 041101        ..A.AB
+ENDMOD

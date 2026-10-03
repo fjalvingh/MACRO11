@@ -57,6 +57,8 @@ DAMAGE.
 #define stricmp strcasecmp
 #endif
 
+#define MAX_FILES 32                   /* max. number of input files */
+
 
 
 /* enable_tf is called by command argument parsing to enable and
@@ -154,12 +156,10 @@ int main(
     int argc,
     char *argv[])
 {
-    char           *fnames[32];
+    char           *fnames[MAX_FILES];
     int             nr_files = 0;
     FILE           *obj = NULL;
-    static char     line[1024];
     TEXT_RLD        tr;
-    char           *macname = NULL;
     char           *objname = NULL;
     char           *lstname = NULL;
     int             arg;
@@ -206,6 +206,10 @@ int main(
                     usage("-m must be followed by a macro library file name\n");
                 }
                 arg++;
+                if (nr_mlbs >= MAX_MLBS) {
+                    fprintf(stderr, "Too many macro libraries (max %d)\n", MAX_MLBS);
+                    exit(EXIT_FAILURE);
+                }
                 mlbs[nr_mlbs] = mlb_open(argv[arg]);
                 if (mlbs[nr_mlbs] == NULL) {
                     fprintf(stderr, "Unable to register macro library %s\n", argv[arg]);
@@ -244,14 +248,19 @@ int main(
             } else if (!stricmp(cp, "l")) {
                 /* The option -l gives the listing file name (.LST) */
                 /* -l - enables listing to stdout. */
-                if(arg >= argc-1 || *argv[arg+1] == '-') {
+                if(arg >= argc-1 || (*argv[arg+1] == '-' && strcmp(argv[arg+1], "-") != 0)) {
                     usage("-l must be followed by the listing file name (- for standard output)\n");
                 }
                 lstname = argv[++arg];
                 if (strcmp(lstname, "-") == 0)
                     lstfile = stdout;
-                else
+                else {
                     lstfile = fopen(lstname, "w");
+                    if (lstfile == NULL) {
+                        fprintf(stderr, "Unable to create listing file %s\n", lstname);
+                        exit(EXIT_FAILURE);
+                    }
+                }
             } else if (!stricmp(cp, "x")) {
                 /* The -x option invokes macro11 to expand the
                    contents of the registered macro libraries (see -m)
@@ -270,14 +279,14 @@ int main(
             } else if (!stricmp(cp, "ysl")) {
                 /* set symbol_len */
                 if (arg >= argc-1) {
-                    usage("-s must be followed by a number\n");
+                    usage("-ysl must be followed by a number\n");
                 } else {
                 char           *s = argv[++arg];
                 char           *endp;
                 int             sl = strtol(s, &endp, 10);
 
                 if (*endp || sl < SYMMAX_DEFAULT || sl > SYMMAX_MAX) {
-                        usage("-s must be followed by a number\n");
+                        usage("-ysl must be followed by a number between 6 and 64\n");
                 }
                 symbol_len = sl;
                 }
@@ -290,13 +299,36 @@ int main(
                 exit(EXIT_FAILURE);
             }
         } else {
+            if (nr_files >= MAX_FILES) {
+                fprintf(stderr, "Too many input files (max %d)\n", MAX_FILES);
+                exit(EXIT_FAILURE);
+            }
             fnames[nr_files++] = argv[arg];
         }
 
+    if (nr_files == 0) {
+        fprintf(stderr, "No input files\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Check that all input files can be opened before creating the
+       object file. */
+    for (i = 0; i < nr_files; i++) {
+        FILE           *fp = fopen(fnames[i], "r");
+
+        if (fp == NULL) {
+            fprintf(stderr, "Unable to open file %s\n", fnames[i]);
+            exit(EXIT_FAILURE);
+        }
+        fclose(fp);
+    }
+
     if (objname) {
         obj = fopen(objname, "wb");
-        if (obj == NULL)
-            return EXIT_FAILURE;
+        if (obj == NULL) {
+            fprintf(stderr, "Unable to create object file %s\n", objname);
+            exit(EXIT_FAILURE);
+        }
     }
 
     add_symbols(&blank_section);
@@ -313,7 +345,7 @@ int main(
         STREAM         *str = new_file_stream(fnames[i]);
 
         if (str == NULL) {
-            report(NULL, "Unable to open file %s\n", fnames[i]);
+            fprintf(stderr, "Unable to open file %s\n", fnames[i]);
             exit(EXIT_FAILURE);
         }
         stack_push(&stack, str);
@@ -356,7 +388,7 @@ int main(
         STREAM         *str = new_file_stream(fnames[i]);
 
         if (str == NULL) {
-            report(NULL, "Unable to open file %s\n", fnames[i]);
+            fprintf(stderr, "Unable to open file %s\n", fnames[i]);
             exit(EXIT_FAILURE);
         }
         stack_push(&stack, str);
@@ -375,14 +407,13 @@ int main(
     sect_sp = -1;
     suppressed = 0;
 
-    errcount = assemble_stack(&stack, &tr);
+    assemble_stack(&stack, &tr);
 
     text_flush(&tr);
 
     while (last_cond >= 0) {
-        report(NULL, "%s:%d: Unterminated conditional\n", conds[last_cond].file, conds[last_cond].line);
+        report_at(conds[last_cond].file, conds[last_cond].line, "Unterminated conditional\n");
         pop_cond(last_cond - 1);
-        errcount++;
     }
 
     for (i = 0; i < nr_mlbs; i++)
@@ -390,9 +421,12 @@ int main(
 
     write_endmod(obj);
 
-    if (obj != NULL)
-        fclose(obj);
+    if (obj != NULL) {
+        if (ferror(obj) || fclose(obj) != 0)
+            report_always(NULL, "Error writing object file %s\n", objname);
+    }
 
+    errcount = error_count;
     if (errcount > 0)
         fprintf(stderr, "%d Errors\n", errcount);
 

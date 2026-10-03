@@ -1,0 +1,47 @@
+complex.mac:3: ***ERROR Expression too complex
+1 Errors
+exit status 1
+--- listing
+       1                                ;; Complex relocation that does not fit an RLD record
+       2 000000 000000C                 	.WORD	G0+G1+G2+G3+G4+G5+G6+G7+G8+G9+G10+G11+G12+G13+G14+G15+G16+G17+G18+G19
+complex.mac:3: ***ERROR Expression too complex
+       3 000002 000000                  	.WORD	G0+G1+G2+G3+G4+G5+G6+G7+G8+G9+G10+G11+G12+G13+G14+G15+G16+G17+G18+G19+G20
+       4                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	GLOBAL G8    =0 REF flags=100
+	GLOBAL G9    =0 REF flags=100
+	GLOBAL G6    =0 REF flags=100
+	GLOBAL G7    =0 REF flags=100
+	GLOBAL G4    =0 REF flags=100
+	GLOBAL G5    =0 REF flags=100
+	GLOBAL G2    =0 REF flags=100
+	GLOBAL G3    =0 REF flags=100
+	GLOBAL G0    =0 REF flags=100
+	GLOBAL G1    =0 REF flags=100
+	GLOBAL G18   =0 REF flags=100
+	GLOBAL G19   =0 REF flags=100
+	GLOBAL G16   =0 REF flags=100
+	GLOBAL G20   =0 REF flags=100
+	GLOBAL G17   =0 REF flags=100
+	GLOBAL G14   =0 REF flags=100
+	GLOBAL G15   =0 REF flags=100
+	GLOBAL G12   =0 REF flags=100
+	GLOBAL G13   =0 REF flags=100
+	GLOBAL G10   =0 REF flags=100
+	GLOBAL G11   =0 REF flags=100
+	PSECT       =4 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=2
+	000000: 000000                      ..
+RLD
+	Complex 0=G0 G1 + G2 + G3 + G4 + G5 + G6 + G7 + G8 + G9 + G10 + G11 + G12 + G13 + G14 + G15 + G16 + G17 + G18 + G19 + store 
+	Location counter modification 2
+TEXT ADDR=2 LEN=2
+	000002: 000000                      ..
+ENDMOD

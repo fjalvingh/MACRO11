@@ -234,6 +234,8 @@ static int assemble(
 
             if (sym != NULL)
                 list_value(stack->top, sym->value);
+            else if (value->type == EX_LIT || value->type == EX_SYM || value->type == EX_TEMP_SYM)
+                report(stack->top, "Illegal symbol definition %s\n", label);
 
             free_tree(value);
             free(label);
@@ -250,6 +252,8 @@ static int assemble(
             free(label);
 
             macstr = expandmacro(stack->top, (MACRO *) op, ncp);
+            if (macstr == NULL)
+                return 0;              /* Error already reported */
 
             stack_push(stack, macstr); /* Push macro expansion
                                           onto input stream */
@@ -268,7 +272,13 @@ static int assemble(
             case SECTION_PSEUDO:
                 switch (op->value) {
                 case P_ENDR:
+                    report(stack->top, ".ENDR without .REPT, .IRP or .IRPC\n");
+                    return 0;
+
                 case P_ENDM:
+                    report(stack->top, ".ENDM without .MACRO\n");
+                    return 0;
+
                 case P_SBTTL:
                 case P_LIST:
                 case P_NLIST:
@@ -344,6 +354,10 @@ static int assemble(
                     return 0;
 
                 case P_SAVE:
+                    if (sect_sp + 1 >= (int) (sizeof(sect_stack) / sizeof(sect_stack[0]))) {
+                        report(stack->top, "Too many nested .SAVE directives\n");
+                        return 0;
+                    }
                     sect_sp++;
                     sect_stack[sect_sp] = current_pc->section;
                     return 1;
@@ -354,7 +368,7 @@ static int assemble(
                         return 0;
                     } else {
                         go_section(tr, sect_stack[sect_sp]);
-                        sect_sp++;
+                        sect_sp--;
                     }
                     return 1;
 
@@ -377,7 +391,7 @@ static int assemble(
                              str = str->next) ;
 
                         if (!str) {
-                            report(str, ".NARG not within macro expansion\n");
+                            report(stack->top, ".NARG not within macro expansion\n");
                             free(label);
                             return 0;
                         }
@@ -546,8 +560,7 @@ static int assemble(
                                 macstr = new_buffer_stream(macbuf, label);
                                 buffer_free(macbuf);
                             } else {
-                                strncpy(macfile, label, sizeof(macfile));
-                                strncat(macfile, ".MAC", sizeof(macfile) - strlen(macfile) - 1);
+                                snprintf(macfile, sizeof(macfile), "%s.MAC", label);
                                 my_searchenv(macfile, "MCALL", hitfile, sizeof(hitfile));
                                 if (hitfile[0])
                                     macstr = new_file_stream(hitfile);
@@ -588,9 +601,17 @@ static int assemble(
 
                                     stmtno = saveline;
                                     list_level = savelist;
-                                }
 
-                                macstr->vtbl->delete(macstr);
+                                    /* If the body ran into EOF, the
+                                       stream was already popped and
+                                       deleted. */
+                                    if (macstack.top == NULL)
+                                        macstr = NULL;
+                                } else
+                                    report(stack->top, "No .MACRO %s found in %s\n", label, macstr->name);
+
+                                if (macstr != NULL)
+                                    macstr->vtbl->delete(macstr);
                             } else
                                 report(stack->top, "MACRO %s not found\n", label);
 
@@ -637,8 +658,12 @@ static int assemble(
 
                 case P_ENABL:
                     /* FIXME - add all the rest of the options. */
-                    while (!EOL(*cp)) {
+                    while (cp = skipdelim(cp), !EOL(*cp)) {
                         label = get_symbol(cp, &cp, NULL);
+                        if (label == NULL) {
+                            report(stack->top, "Illegal .ENABL syntax\n");
+                            return 0;
+                        }
                         if (strcmp(label, "AMA") == 0)
                             enabl_ama = 1;
                         else if (strcmp(label, "LSB") == 0) {
@@ -653,8 +678,12 @@ static int assemble(
 
                 case P_DSABL:
                     /* FIXME Ditto as for .ENABL */
-                    while (!EOL(*cp)) {
+                    while (cp = skipdelim(cp), !EOL(*cp)) {
                         label = get_symbol(cp, &cp, NULL);
+                        if (label == NULL) {
+                            report(stack->top, "Illegal .DSABL syntax\n");
+                            return 0;
+                        }
                         if (strcmp(label, "AMA") == 0)
                             enabl_ama = 0;
                         else if (strcmp(label, "LSB") == 0)
@@ -692,7 +721,7 @@ static int assemble(
                     opcp = skipwhite(opcp);
                     cp = opcp + 3;     /* Point cp at the "DF" or
                                           "NDF" part */
-                    /* Falls into... */
+                    /* FALLTHROUGH */
                 case P_IIF:
                 case P_IF:
                     {
@@ -700,9 +729,15 @@ static int assemble(
                         int             ok;
 
                         label = get_symbol(cp, &cp, NULL);      /* Get condition */
+                        if (label == NULL) {
+                            report(stack->top, "Missing .IF condition\n");
+                            label = memcheck(strdup(""));
+                        }
                         cp = skipdelim(cp);
 
-                        if (strcmp(label, "DF") == 0) {
+                        if (*label == 0) {
+                            ok = FALSE;        /* Error reported above */
+                        } else if (strcmp(label, "DF") == 0) {
                             value = parse_expr(cp, 1);
                             cp = value->cp;
                             ok = eval_defined(value);
@@ -763,6 +798,8 @@ static int assemble(
                             unsigned        uword;
                             EX_TREE        *value = parse_expr(cp, 0);
 
+                            ok = FALSE;
+
                             cp = value->cp;
 
                             if (value->type != EX_LIT) {
@@ -796,6 +833,10 @@ static int assemble(
                                     ok = (sword < 0), word = sword;
                                 else if (strcmp(label, "LE") == 0)
                                     ok = (sword <= 0), word = sword;
+                                else {
+                                    report(stack->top, "Unknown .IF condition %s\n", label);
+                                    word = 0;
+                                }
 
                                 list_value(stack->top, word);
 
@@ -914,6 +955,10 @@ static int assemble(
                         while (cp = skipdelim(cp), !EOL(*cp)) {
                             /* Parse section options */
                             label = get_symbol(cp, &cp, NULL);
+                            if (label == NULL) {
+                                report(stack->top, "Illegal .PSECT syntax\n");
+                                return 0;
+                            }
                             if (strcmp(label, "ABS") == 0) {
                                 sect->flags &= ~PSECT_REL;      /* Not relative */
                                 sect->flags |= PSECT_COM;       /* implies common */
@@ -1024,11 +1069,21 @@ static int assemble(
                     {
                         EX_TREE        *value;
 
-                        do {
-                            cp = skipwhite(cp);
+                        int             ok = 1;
+
+                        cp = skipwhite(cp);
+                        while (!EOL(*cp)) {
                             if (*cp == '<' || *cp == '^') {
-                                /* A byte value */
-                                value = parse_expr(cp, 0);
+                                /* A byte value.  Only parse the single
+                                   term, so that a following delimiter
+                                   like / isn't taken as an operator. */
+                                value = parse_term(cp);
+                                if (value->type == EX_ERR || value->cp == cp) {
+                                    report(stack->top, "Invalid expression in %s\n", op->label);
+                                    free_tree(value);
+                                    ok = 0;
+                                    break;
+                                }
                                 cp = value->cp;
                                 store_value(stack, tr, 1, value);
                                 free_tree(value);
@@ -1036,18 +1091,23 @@ static int assemble(
                                 char            quote = *cp++;
 
                                 while (*cp && *cp != '\n' && *cp != quote)
-                                    store_word(stack->top, tr, 1, *cp++);
+                                    store_word(stack->top, tr, 1, *cp++ & 0xff);
+                                if (*cp != quote) {
+                                    report(stack->top, "Unterminated string in %s\n", op->label);
+                                    ok = 0;
+                                    break;
+                                }
                                 cp++;  /* Skip closing quote */
                             }
 
                             cp = skipwhite(cp);
-                        } while (!EOL(*cp));
+                        }
 
                         if (op->value == P_ASCIZ) {
                             store_word(stack->top, tr, 1, 0);
                         }
 
-                        return 1;
+                        return ok;
                     }
 
                 case P_RAD50:
@@ -1071,8 +1131,22 @@ static int assemble(
                         memcpy(radstr, cp, len);
                         radstr[len] = 0;
                         cp += len;
-                        if (*cp && *cp != '\n')
-                            cp++;
+                        if (*cp != endstr[0]) {
+                            report(stack->top, "Unterminated string in .RAD50\n");
+                            free(radstr);
+                            return 0;
+                        }
+                        cp++;
+
+                        /* Replace characters that can't be encoded by
+                           blanks, so encoding can't get stuck */
+                        for (radp = radstr; *radp; radp++) {
+                            if (!rad50_char_ok(*radp)) {
+                                report(stack->top, "Illegal character '%c' in .RAD50 string\n", *radp);
+                                *radp = ' ';
+                            }
+                        }
+
                         for (radp = radstr; *radp;) {
                             unsigned        rad;
 
@@ -1102,7 +1176,7 @@ static int assemble(
                     case OC_NONE:
                         /* No operands. */
                         store_word(stack->top, tr, 2, op->value);
-                        return 1;
+                        break;
 
                     case OC_MARK:
                         /* MARK, EMT, TRAP */  {
@@ -1113,18 +1187,35 @@ static int assemble(
                             if (*cp == '#')
                                 cp++;  /* Allow the hash, but
                                           don't require it */
-                            value = parse_expr(cp, 0);
+                            unsigned        max = (op->value == I_MARK) ? 077 : 0377;
+                            int             ok = 1;
+
+                            if (EOL(*cp)) {
+                                /* No operand means 0 */
+                                value = new_ex_lit(0);
+                                value->cp = cp;
+                            } else
+                                value = parse_expr(cp, 0);
+                            cp = value->cp;
                             if (value->type != EX_LIT) {
                                 report(stack->top, "Instruction requires " "simple literal operand\n");
                                 word = op->value;
+                                ok = 0;
+                            } else if ((value->data.lit & 0177777) > max) {
+                                report(stack->top, "Operand %o out of range (max %o)\n",
+                                       value->data.lit & 0177777, max);
+                                word = op->value | (value->data.lit & max);
+                                ok = 0;
                             } else {
                                 word = op->value | value->data.lit;
                             }
 
                             store_word(stack->top, tr, 2, word);
                             free_tree(value);
+                            if (!ok)
+                                return 0;
                         }
-                        return 1;
+                        break;
 
                     case OC_1GEN:
                         /* One general addressing mode */  {
@@ -1140,6 +1231,9 @@ static int assemble(
                             if (op->value == 0100 && (mode.type & 070) == 0) {
                                 report(stack->top, "JMP Rn is illegal\n");
                                 /* But encode it anyway... */
+                                store_word(stack->top, tr, 2, op->value | mode.type);
+                                free_addr_mode(&mode);
+                                return 0;
                             }
 
                             /* Build instruction word */
@@ -1147,7 +1241,7 @@ static int assemble(
                             store_word(stack->top, tr, 2, word);
                             mode_extension(tr, &mode, stack->top);
                         }
-                        return 1;
+                        break;
 
                     case OC_2GEN:
                         /* Two general addressing modes */  {
@@ -1160,6 +1254,7 @@ static int assemble(
                                 return 0;
                             }
 
+                            cp = skipwhite(cp);
                             if (*cp++ != ',') {
                                 report(stack->top, "Illegal syntax\n");
                                 free_addr_mode(&left);
@@ -1178,7 +1273,7 @@ static int assemble(
                             mode_extension(tr, &left, stack->top);
                             mode_extension(tr, &right, stack->top);
                         }
-                        return 1;
+                        break;
 
                     case OC_BR:
                         /* branches */  {
@@ -1224,8 +1319,11 @@ static int assemble(
                                 offset = value->data.lit - (DOT + 2);
                             }
 
-                            if (!check_branch(stack, offset, -256, 255))
-                                offset = 0;
+                            if (!check_branch(stack, offset, -256, 255)) {
+                                store_word(stack->top, tr, 2, op->value);
+                                free_tree(value);
+                                return 0;
+                            }
 
                             /* Emit the branch code */
                             offset &= 0777;     /* Reduce to 9 bits */
@@ -1236,7 +1334,7 @@ static int assemble(
 
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     case OC_SOB:
                         {
@@ -1269,13 +1367,13 @@ static int assemble(
 
                                 if (!express_sym_offset(value, &sym, &offset)) {
                                     report(stack->top, "Bad branch target\n");
+                                    store_word(stack->top, tr, 2, op->value | (reg << 6));
                                     free_tree(value);
                                     return 0;
                                 }
                                 /* Must be same section */
                                 if (sym->section != current_pc->section) {
                                     report(stack->top, "Bad branch target\n");
-                                    free_tree(value);
                                     offset = 0;
                                 } else {
                                     /* Calculate byte offset */
@@ -1291,8 +1389,11 @@ static int assemble(
                                 }
                             }
 
-                            if (!check_branch(stack, offset, 0, 126))
-                                offset = 0;
+                            if (!check_branch(stack, offset, 0, 126)) {
+                                store_word(stack->top, tr, 2, op->value | (reg << 6));
+                                free_tree(value);
+                                return 0;
+                            }
 
                             offset &= 0177;     /* Reduce to 7 bits */
                             offset >>= 1;       /* Shift to become word offset */
@@ -1300,7 +1401,7 @@ static int assemble(
 
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     case OC_ASH:
                         /* First op is gen, second is register. */  {
@@ -1337,7 +1438,7 @@ static int assemble(
                             mode_extension(tr, &mode, stack->top);
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     case OC_JSR:
                         /* First op is register, second is gen. */  {
@@ -1359,6 +1460,7 @@ static int assemble(
                             cp = skipwhite(cp);
                             if (*cp++ != ',') {
                                 report(stack->top, "Illegal addressing mode\n");
+                                free_tree(value);
                                 return 0;
                             }
 
@@ -1372,7 +1474,7 @@ static int assemble(
                             mode_extension(tr, &mode, stack->top);
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     case OC_1REG:
                         /* One register (RTS) */  {
@@ -1384,14 +1486,15 @@ static int assemble(
                             reg = get_register(value);
                             if (reg == NO_REG) {
                                 report(stack->top, "Illegal addressing mode\n");
+                                store_word(stack->top, tr, 2, op->value);
                                 free_tree(value);
-                                reg = 0;
+                                return 0;
                             }
 
                             store_word(stack->top, tr, 2, op->value | reg);
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     case OC_1FIS:
                         /* One one gen and one reg 0-3 */  {
@@ -1416,9 +1519,11 @@ static int assemble(
                             cp = value->cp;
 
                             reg = get_register(value);
-                            if (reg == NO_REG || reg > 4) {
+                            if (reg == NO_REG || reg > 3) {
                                 report(stack->top, "Invalid destination register\n");
-                                reg = 0;
+                                free_tree(value);
+                                free_addr_mode(&mode);
+                                return 0;
                             }
 
                             word = op->value | mode.type | (reg << 6);
@@ -1426,7 +1531,7 @@ static int assemble(
                             mode_extension(tr, &mode, stack->top);
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     case OC_2FIS:
                         /* One reg 0-3 and one gen */  {
@@ -1434,16 +1539,14 @@ static int assemble(
                             EX_TREE        *value;
                             unsigned        reg;
                             unsigned        word;
-                            int             ok = 1;
-
                             value = parse_expr(cp, 0);
                             cp = value->cp;
 
                             reg = get_register(value);
-                            if (reg == NO_REG || reg > 4) {
+                            if (reg == NO_REG || reg > 3) {
                                 report(stack->top, "Illegal source register\n");
-                                reg = 0;
-                                ok = 0;
+                                free_tree(value);
+                                return 0;
                             }
 
                             cp = skipwhite(cp);
@@ -1464,12 +1567,20 @@ static int assemble(
                             mode_extension(tr, &mode, stack->top);
                             free_tree(value);
                         }
-                        return 1;
+                        break;
 
                     default:
                         report(stack->top, "Unimplemented instruction format\n");
                         return 0;
                     }                  /* end(handle an instruction) */
+
+                    /* Nothing but a comment may follow the operands */
+                    cp = skipwhite(cp);
+                    if (!EOL(*cp)) {
+                        report(stack->top, "Junk at end of line ('%c')\n", *cp);
+                        return 0;
+                    }
+                    return 1;
                 }
                 break;
             }                          /* end switch(section type) */

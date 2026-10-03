@@ -1,0 +1,38 @@
+psect.mac:10: ***ERROR No saved section for .RESTORE
+1 Errors
+exit status 1
+--- listing
+       1                                ;; Sections and relocation
+       2                                	.PSECT	AAA
+       3 000000 000000C                 X:	.WORD	^CX
+       4                                	.PSECT	BBB
+       5                                	.SAVE
+       6                                	.PSECT	AAA
+       7                                	.RESTORE
+       8 000000 000005                  	.WORD	X+5
+       9 000002 016700  000000          	MOV	X,R0
+psect.mac:10: ***ERROR No saved section for .RESTORE
+      10                                	.RESTORE
+      11                                	.END
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =0 flags=40
+	PSECT AAA   =2 flags=40
+	PSECT BBB   =6 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition AAA+0
+TEXT ADDR=0 LEN=2
+	000000: 000000                      ..
+RLD
+	Complex 0=AAA:0 ^C store 
+	Location counter definition BBB+0
+TEXT ADDR=0 LEN=6
+	000000: 000005 016700 000000        ......
+RLD
+	PSECT plus offset 0=AAA+5
+	PSECT displaced 4=AAA
+ENDMOD

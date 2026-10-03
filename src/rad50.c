@@ -59,7 +59,7 @@ unsigned rad50(
     if (!*cp)                          /* Got to check for end-of-string manually, because strchr will call it a hit.  :-/ */
         return acc;
 
-    rp = strchr(radtbl, toupper(*cp));
+    rp = strchr(radtbl, toupper((unsigned char) *cp));
     if (rp == NULL)                    /* Not a RAD50 character */
         return acc;
     acc = ((int) (rp - radtbl)) * 03100;        /* Convert */
@@ -71,7 +71,7 @@ unsigned rad50(
         *endp = cp;
     if (!*cp)
         return acc;
-    rp = strchr(radtbl, toupper(*cp));
+    rp = strchr(radtbl, toupper((unsigned char) *cp));
     if (rp == NULL)
         return acc;
     acc += ((int) (rp - radtbl)) * 050;
@@ -81,7 +81,7 @@ unsigned rad50(
         *endp = cp;
     if (!*cp)
         return acc;
-    rp = strchr(radtbl, toupper(*cp));
+    rp = strchr(radtbl, toupper((unsigned char) *cp));
     if (rp == NULL)
         return acc;
     acc += (int) (rp - radtbl);
@@ -91,6 +91,30 @@ unsigned rad50(
         *endp = cp;
 
     return acc;                        /* Done. */
+}
+
+/* rad50_char_ok - returns true if the character can be encoded in
+   RAD50 */
+
+int rad50_char_ok(
+    int c)
+{
+    return c != 0 && strchr(radtbl, toupper((unsigned char) c)) != NULL;
+}
+
+/* rad50_name_ok - returns true if the name can be encoded in two RAD50
+   words without loss (at most 6 characters, all RAD50) */
+
+int rad50_name_ok(
+    char *cp)
+{
+    int             len;
+
+    for (len = 0; cp[len]; len++)
+        if (!rad50_char_ok(cp[len]))
+            return 0;
+
+    return len <= 6;
 }
 
 /* rad50x2 - converts from 0 to 6 characters into two words of RAD50. */

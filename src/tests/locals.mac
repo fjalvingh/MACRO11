@@ -1,0 +1,26 @@
+;; Local labels must not collide in later blocks
+L0:	NOP
+1000$:	BR	1000$
+L1:	NOP
+1000$:	BR	1000$
+L2:	NOP
+1000$:	BR	1000$
+L3:	NOP
+1000$:	BR	1000$
+L4:	NOP
+1000$:	BR	1000$
+L5:	NOP
+1000$:	BR	1000$
+L6:	NOP
+1000$:	BR	1000$
+L7:	NOP
+1000$:	BR	1000$
+L8:	NOP
+1000$:	BR	1000$
+L9:	NOP
+1000$:	BR	1000$
+L10:	NOP
+1000$:	BR	1000$
+L11:	NOP
+1000$:	BR	1000$
+	.END

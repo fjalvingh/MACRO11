@@ -1,0 +1,12 @@
+;; Numbers that are not valid must be reported, not hang or split
+	.WORD	9
+	.WORD	^B102
+	.WORD	8.5
+	.WORD	1/0
+	.WORD	200000
+	.WORD	177777, 65535.
+	.WORD	1 2,3
+	.WORD	%9
+	.WORD	<1
+	.WORD	'A, "AB
+	.END

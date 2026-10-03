@@ -62,6 +62,7 @@ typedef struct file_stream {
     STREAM          stream;     // Base class
     FILE           *fp;         // File pointer
     char           *buffer;     // Line buffer
+    int             newline;    // Next line starts a new physical line
 } FILE_STREAM;
 
 typedef struct buffer {

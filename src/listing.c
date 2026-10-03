@@ -90,32 +90,34 @@ static void list_fit(
     STREAM *str,
     unsigned addr)
 {
-    int             len = strlen(binline);
+    size_t          len = strlen(binline);
     size_t          col1 = offsetof(LSTFORMAT, source);
     size_t          col2 = offsetof(LSTFORMAT, pc);
+    size_t          col3 = offsetof(LSTFORMAT, words);
 
-    if (strlen(binline) >= col1) {
-        int             offset = offsetof(LSTFORMAT, pc);
-
+    /* Start a new line if this one is full, or if it only holds a
+       value printed by list_value (as for .IIF), which occupies the
+       location column. */
+    if (len >= col1 || (len > col2 && len < col3)) {
         list_flush();
         listline[0] = 0;
         binline[0] = 0;
-		if (list_hexout)
-			// extension: list binary output in hex notation: 4 digits with suffix "h"
-			sprintf(binline, "%*s %5.4Xh", offsetof(LSTFORMAT, pc), "", addr);
-		else
-			// standard: list binary output in octal notation
-			sprintf(binline, "%*s %6.6o", offsetof(LSTFORMAT, pc), "", addr);
-        padto(binline, offsetof(LSTFORMAT, words));
-    } else if (strlen(binline) <= col2) {
-		if (list_hexout)
-			// extension: list binary output in hex notation:  4 digits with suffix "h"
-			sprintf(binline, "%*s%*d %5.4Xh", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, addr);
-			else
-			sprintf(binline, "%*s%*d %6.6o", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, addr);
-        padto(binline, offsetof(LSTFORMAT, words));
+        if (list_hexout)
+            /* extension: list binary output in hex notation: 4 digits with suffix "h" */
+            sprintf(binline, "%*s %5.4Xh", (int) col2, "", addr);
+        else
+            /* standard: list binary output in octal notation */
+            sprintf(binline, "%*s %6.6o", (int) col2, "", addr);
+        padto(binline, (int) col3);
+    } else if (len <= col2) {
+        if (list_hexout)
+            /* extension: list binary output in hex notation:  4 digits with suffix "h" */
+            sprintf(binline, "%*s%*d %5.4Xh", (int) SIZEOF_MEMBER(LSTFORMAT, flag), "",
+                    (int) SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, addr);
+        else
+            sprintf(binline, "%*s%*d %6.6o", (int) SIZEOF_MEMBER(LSTFORMAT, flag), "",
+                    (int) SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, addr);
+        padto(binline, (int) col3);
     }
 }
 
@@ -128,14 +130,14 @@ void list_value(
     if (dolist()) {
         /* Print the value and go */
         binline[0] = 0;
-		if (list_hexout)
-			// extension: list binary output in hex notation:  4 digits with suffix "h"
-			sprintf(binline, "%*s%*d %5.4Xh", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, word & 0177777);
-		else
-			// standard: list binary output in octal notation
-			sprintf(binline, "%*s%*d %6.6o", SIZEOF_MEMBER(LSTFORMAT, flag), "",
-                SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, word & 0177777);
+        if (list_hexout)
+            /* extension: list binary output in hex notation:  4 digits with suffix "h" */
+            sprintf(binline, "%*s%*d %5.4Xh", (int) SIZEOF_MEMBER(LSTFORMAT, flag), "",
+                    (int) SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, word & 0177777);
+        else
+            /* standard: list binary output in octal notation */
+            sprintf(binline, "%*s%*d %6.6o", (int) SIZEOF_MEMBER(LSTFORMAT, flag), "",
+                    (int) SIZEOF_MEMBER(LSTFORMAT, line_number), str->line, word & 0177777);
     }
 }
 
@@ -168,33 +170,105 @@ void list_word(
 
 
 
-/* reports errors */
+/* error_count counts the errors reported in the final pass */
+int             error_count = 0;
+
+/* vmessage prints a message to stderr and the listing */
+static void vmessage(
+    char *kind,
+    char *name,
+    int line,
+    char *fmt,
+    va_list ap)
+{
+    va_list         ap2;
+
+    va_copy(ap2, ap);
+    if (name)
+        fprintf(stderr, "%s:%d: ***%s ", name, line, kind);
+    else
+        fprintf(stderr, "***%s ", kind);
+    vfprintf(stderr, fmt, ap);
+
+    if (lstfile) {
+        if (name)
+            fprintf(lstfile, "%s:%d: ***%s ", name, line, kind);
+        else
+            fprintf(lstfile, "***%s ", kind);
+        vfprintf(lstfile, fmt, ap2);
+    }
+    va_end(ap2);
+}
+
+/* vreport is the common part of report, report_at and report_always */
+static void vreport(
+    char *name,
+    int line,
+    char *fmt,
+    va_list ap)
+{
+    error_count++;
+    vmessage("ERROR", name, line, fmt, ap);
+}
+
+/* warning_always prints a warning, which doesn't count as an error */
+void warning_always(
+    STREAM *str,
+    char *fmt,
+    ...)
+{
+    va_list         ap;
+
+    va_start(ap, fmt);
+    vmessage("WARNING", str ? str->name : NULL, str ? str->line : 0, fmt, ap);
+    va_end(ap);
+}
+
+/* reports errors.  Errors are only reported (and counted) in the
+   final pass, because everything is assembled twice. */
 void report(
     STREAM *str,
     char *fmt,
     ...)
 {
     va_list         ap;
-    char           *name = "**";
-    int             line = 0;
 
     if (!pass)
         return;                        /* Don't report now. */
 
-    if (str) {
-        name = str->name;
-        line = str->line;
-    }
-
-    fprintf(stderr, "%s:%d: ***ERROR ", name, line);
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    vreport(str ? str->name : NULL, str ? str->line : 0, fmt, ap);
     va_end(ap);
+}
 
-    if (lstfile) {
-        fprintf(lstfile, "%s:%d: ***ERROR ", name, line);
-        va_start(ap, fmt);
-        vfprintf(lstfile, fmt, ap);
-        va_end(ap);
-    }
+/* report_at reports an error at an explicit file and line; used when
+   the stream that caused the error is already gone (e.g. at EOF). */
+void report_at(
+    char *name,
+    int line,
+    char *fmt,
+    ...)
+{
+    va_list         ap;
+
+    if (!pass)
+        return;                        /* Don't report now. */
+
+    va_start(ap, fmt);
+    vreport(name, line, fmt, ap);
+    va_end(ap);
+}
+
+/* report_always reports an error regardless of the current pass.  Used
+   for errors detected outside of the assembly passes. */
+void report_always(
+    STREAM *str,
+    char *fmt,
+    ...)
+{
+    va_list         ap;
+
+    va_start(ap, fmt);
+    vreport(str ? str->name : NULL, str ? str->line : 0, fmt, ap);
+    va_end(ap);
 }

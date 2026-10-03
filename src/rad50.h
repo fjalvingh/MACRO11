@@ -42,6 +42,12 @@ extern void     rad50x2(
     char *cp,
     unsigned *rp);
 
+extern int      rad50_char_ok(
+    int c);
+
+extern int      rad50_name_ok(
+    char *cp);
+
 extern void     unrad50(
     unsigned word,
     char *cp);

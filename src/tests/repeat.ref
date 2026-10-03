@@ -1,0 +1,33 @@
+repeat.mac:11: ***ERROR Repeat block body not closed (missing .ENDR)
+1 Errors
+exit status 1
+--- listing
+       1                                ;; Repeat blocks
+       2                                	.REPT	0
+       3                                	HALT
+       4                                	.ENDR
+       5                                	.REPT	2
+       6                                	NOP
+       7                                	.ENDR
+       1 000000 000240                  	NOP
+       1 000002 000240                  	NOP
+       8                                	.IRP	X,<A,<B,C>>
+       9                                	.ASCII	/X/
+      10                                	.ENDR
+       1 000004    101                  	.ASCII	/A/
+       2 000005    102     054     103  	.ASCII	/B,C/
+      11                                	.REPT	3
+repeat.mac:11: ***ERROR Repeat block body not closed (missing .ENDR)
+      12                                	NOP
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =10 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=10
+	000000: 000240 000240 041101 041454 ....AB,C
+ENDMOD

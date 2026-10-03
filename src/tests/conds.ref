@@ -1,0 +1,28 @@
+conds.mac:3: ***ERROR Unknown .IF condition XX
+conds.mac:6: ***ERROR Unterminated conditional
+2 Errors
+exit status 1
+--- listing
+       1                                ;; Conditionals
+       2 000001                         	.IIF	NE 1, .WORD 1,2
+         000000 000001  000002          
+conds.mac:3: ***ERROR Unknown .IF condition XX
+       3 000000                         	.IF	XX 1
+       4                                	.WORD	5
+       5                                	.ENDC
+       6 000000                         	.IF	EQ 0
+       7 000004 000240                  	NOP
+       8                                	.END
+conds.mac:6: ***ERROR Unterminated conditional
+--- object
+GSD:
+	MODNAME       =0 flags=0
+	PSECT . ABS.=0 flags=104
+	PSECT       =6 flags=40
+	XFER . ABS.=1 flags=10
+ENDGSD
+RLD
+	Location counter definition +0
+TEXT ADDR=0 LEN=6
+	000000: 000001 000002 000240        ......
+ENDMOD

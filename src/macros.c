@@ -67,18 +67,23 @@ STREAM         *new_macro_stream(
 /* read_body fetches the body of .MACRO, .REPT, .IRP, or .IRPC into a
    BUFFER. */
 
-void read_body(
+int read_body(
     STACK *stack,
     BUFFER *gb,
     char *name,
     int called)
 {
     int             nest;
+    char           *start_name;     /* Where the body starts, for */
+    int             start_line;     /* error messages */
 
     /* Read the stream in until the end marker is hit */
 
     /* Note: "called" says that this body is being pulled from a macro
        library, and so under no circumstance should it be listed. */
+
+    start_name = memcheck(strdup(stack->top ? stack->top->name : "**"));
+    start_line = stack->top ? stack->top->line : 0;
 
     nest = 1;
     for (;;) {
@@ -88,8 +93,10 @@ void read_body(
 
         nextline = stack_gets(stack);  /* Now read the line */
         if (nextline == NULL) {        /* End of file. */
-            report(stack->top, "Macro body not closed\n");
-            break;
+            report_at(start_name, start_line, "%s body not closed (missing %s)\n", name ? "Macro" : "Repeat block",
+                      name ? ".ENDM" : ".ENDR");
+            free(start_name);
+            return 0;
         }
 
         if (!called && (list_level - 1 + list_md) > 0) {
@@ -125,8 +132,10 @@ void read_body(
                 }
             }
 
-            if (nest == 0)
-                return;                /* All done. */
+            if (nest == 0) {
+                free(start_name);
+                return 1;              /* All done. */
+            }
         }
 
         buffer_append_line(gb, nextline);
@@ -379,7 +388,7 @@ void eval_arg(
     if (arg->value[0] == '\\') {
         EX_TREE        *value = parse_expr(arg->value + 1, 0);
         unsigned        word = 0;
-        char            temp[10];
+        char            temp[40];
 
         if (value->type != EX_LIT) {
             report(refstr, "Constant value required\n");
@@ -544,7 +553,7 @@ void free_macro(
     MACRO *mac)
 {
     if (mac->text) {
-        free(mac->text);
+        buffer_free(mac->text);
     }
     free_args(mac->args);
     free_sym(&mac->sym);
